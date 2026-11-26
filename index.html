@@ -7803,6 +7803,17 @@ async function xferUnpack(t){ if(t[0]==="J") return decodeURIComponent(escape(at
   return await new Response(new Blob([u]).stream().pipeThrough(new DecompressionStream("gzip"))).text(); }
 async function xferExport(){ let bu=null; try{ bu=localStorage.getItem("buhtrainer.v1"); }catch(e){} return "ZCH1."+await xferPack(JSON.stringify({v:1,at:Date.now(),prog:S.prog,bu})); }
 async function xferParse(text){ const m=String(text||"").replace(/\s+/g,"").match(/ZCH1\.([JZ][A-Za-z0-9+/=]+)/); if(!m) throw new Error("format"); const o=JSON.parse(await xferUnpack(m[1])); if(!o||!o.prog||typeof o.prog.q!=="object") throw new Error("format"); return o; }
+function xferMergeVal(a,b){ if(a===undefined||a===null) return thaw(b); if(b===undefined||b===null) return a;
+  if(Array.isArray(a)&&Array.isArray(b)){ const seen=new Set(a.map(x=>JSON.stringify(x))); const r=a.slice(); for(const x of b){ const k=JSON.stringify(x); if(!seen.has(k)){ seen.add(k); r.push(thaw(x)); } } return r; }
+  if(typeof a==="object"&&typeof b==="object"&&!Array.isArray(a)&&!Array.isArray(b)){ for(const k in b) a[k]=xferMergeVal(a[k],b[k]); return a; }
+  if(typeof a==="number"&&typeof b==="number") return Math.max(a,b);
+  if(typeof a==="boolean"&&typeof b==="boolean") return a||b;
+  return a; }
+function xferMerge(o){ lsSet("zach.prog.backup",S.prog); const cur=Object.assign(blankProg(),thaw(S.prog)), inc=Object.assign(blankProg(),thaw(o.prog));
+  const q=Object.assign({},cur.q); for(const id in inc.q){ const x=inc.q[id], m=q[id]; if(x&&(!m||(x.s||0)>(m.s||0)||((x.s||0)===(m.s||0)&&(x.t||0)>(m.t||0)))) q[id]=x; }
+  const set=cur.set; delete cur.q; delete inc.q; delete inc.set; S.prog=xferMergeVal(cur,inc); S.prog.q=q; S.prog.set=set;
+  if(o.bu){ try{ const lb=JSON.parse(localStorage.getItem("buhtrainer.v1")||"null"), rb=JSON.parse(o.bu); const mb=lb&&typeof lb==="object"? xferMergeVal(lb,rb) : rb; if(mb&&typeof mb==="object") mb.upd=Date.now(); localStorage.setItem("buhtrainer.v1",JSON.stringify(mb)); }catch(e){} }
+  FIND_IX=null; scheduleSave(true); }
 function xferApply(o){ lsSet("zach.prog.backup",S.prog); S.prog=Object.assign(blankProg(),thaw(o.prog)); if(o.bu){ try{ localStorage.setItem("buhtrainer.v1",o.bu); }catch(e){} } FIND_IX=null; scheduleSave(true); }
 function xferBlock(){ const box=h("div",{id:"xfer"}), out=h("div",{class:"stack",style:"margin-top:10px"});
   const exp=h("button",{class:"btn btn-ghost btn-block",id:"xfer-exp",onclick:async()=>{ exp.disabled=true; try{ const code=await xferExport(); let copied=false; try{ await navigator.clipboard.writeText(code); copied=true; }catch(e){}
@@ -7810,8 +7821,9 @@ function xferBlock(){ const box=h("div",{id:"xfer"}), out=h("div",{class:"stack"
       out.replaceChildren(h("div",{class:"note"},copied? "Код скопирован. Откройте другую версию «Зачётки» → Настройки → «Вставить прогресс» и вставьте его." : "Выделите и скопируйте весь код, затем вставьте его в другой версии «Зачётки»."),ta); }catch(e){ toast("Не получилось собрать код."); } exp.disabled=false; }},"Скопировать прогресс");
   const imp=h("button",{class:"btn btn-ghost btn-block",id:"xfer-imp",onclick:()=>{ const ta=h("textarea",{class:"field",id:"xfer-in",rows:3,style:"font:12px var(--f-mono)",placeholder:"Вставьте код, он начинается с ZCH1."}), res=h("div");
       out.replaceChildren(ta,h("button",{class:"btn btn-primary btn-block",id:"xfer-check",onclick:async()=>{ try{ const o=await xferParse(ta.value), n=Object.keys(o.prog.q).length, cur=Object.keys(S.prog.q).length;
-          res.replaceChildren(h("div",{class:"card",style:"margin-top:4px"},h("div",{class:"t",style:"font-weight:600"},`В коде: вопросов с ответами ${n}, сохранён ${new Date(o.at).toLocaleString("ru-RU",{day:"numeric",month:"long",hour:"2-digit",minute:"2-digit"})}`),h("div",{class:"note",style:"margin-top:4px"},`Сейчас здесь: ${cur}. Текущий прогресс на этом устройстве будет заменён (копия останется в браузере).`),
-            h("button",{class:"btn btn-primary btn-block",id:"xfer-apply",style:"margin-top:10px",onclick:()=>{ xferApply(o); toast("Прогресс загружен."); go({name:"home"}); }},"Заменить прогресс этим")));
+          res.replaceChildren(h("div",{class:"card",style:"margin-top:4px"},h("div",{class:"t",style:"font-weight:600"},`В коде: вопросов с ответами ${n}, сохранён ${new Date(o.at).toLocaleString("ru-RU",{day:"numeric",month:"long",hour:"2-digit",minute:"2-digit"})}`),h("div",{class:"note",style:"margin-top:4px"},`Сейчас здесь: ${cur}. «Объединить» сохранит изученное и здесь, и в коде (по каждому вопросу берётся лучший результат). «Заменить» сотрёт текущий прогресс (копия останется в браузере).`),
+            h("button",{class:"btn btn-primary btn-block",id:"xfer-merge",style:"margin-top:10px",onclick:()=>{ xferMerge(o); toast("Прогресс объединён."); go({name:"home"}); }},"Объединить с текущим"),
+            h("button",{class:"btn btn-ghost btn-block",id:"xfer-apply",style:"margin-top:8px",onclick:()=>{ xferApply(o); toast("Прогресс загружен."); go({name:"home"}); }},"Заменить прогресс этим")));
         }catch(e){ res.replaceChildren(h("div",{class:"card note",style:"margin-top:4px;color:var(--bad)"},"Код не распознан. Скопируйте его целиком — от ZCH1. до конца.")); } }},"Проверить код"),res); }},"Вставить прогресс");
   box.append(h("div",{class:"section-head"},h("h2",{class:"eyebrow"},"Перенос прогресса")), h("div",{class:"note",style:"margin-bottom:10px"},"Между «Зачёткой» в Claude и версией по ссылке GitHub (или другим браузером). Прогресс переносится целиком, вместе с тренажёром по бухучёту."), h("div",{class:"stack"},exp,imp), out); return box; }
 function setExtra(w){ const hd=[...w.querySelectorAll(".section-head")].find(x=>/О приложении/.test(x.textContent)); const b=xferBlock(); if(hd) hd.before(b); else w.append(b); return w; }
