@@ -1203,7 +1203,7 @@ async function boot(){
 }
 /* Перерисовываем экран только вне активного вопроса, чтобы не сбить ответ */
 // фоновые обновления (база, отметки) перерисовывают только «спокойные» экраны — интерактивные не трогаем, чтобы не сбить ответ
-const SOFT_OK=new Set(["home","disc","stats","settings","acc","course","examlist","plan","theory","palace","deck","tyhub","lab","nn","opx","psc","psth","psft","psfs","att","attp","ukk","ukref","integ","intbal","intref","fzt","fztr","plm","cal","cfl","engm","engpl","enggr","xp"]);
+const SOFT_OK=new Set(["home","disc","stats","settings","acc","course","examlist","plan","theory","palace","deck","tyhub","lab","nn","opx","psc","psth","psft","psfs","att","attp","ukk","ukref","integ","intbal","intref","fzt","fztr","plm","cal","cfl","engm","engpl","enggr","enggl","xp"]);
 function softRender(){ if(!SOFT_OK.has(S.view.name)) return; render(); }
 
 /* ================== Очереди ================== */
@@ -1312,6 +1312,8 @@ function render(){
   else if(v.name==="engq") app.append(viewEngQ());
   else if(v.name==="engm") app.append(viewEngM(v));
   else if(v.name==="engpl") app.append(viewEngPL());
+  else if(v.name==="enggl") app.append(viewEngGl());
+  else if(v.name==="engtt") app.append(viewEngTt());
   else if(v.name==="engcp") app.append(viewEngCP(v));
   else if(v.name==="enggr") app.append(viewEngGr());
   else if(v.name==="cale") app.append(viewCalE());
@@ -7137,6 +7139,7 @@ function viewEng(){ const w=h("div",{class:"wrap"}), P=engP(), due=engDue();
   w.append(h("header",{class:"top"}, backBtn({name:"home"}), h("div",{class:"eyebrow"},"Дисциплина")));
   w.append(h("h1",{style:"font:700 22px/1.25 var(--f-display)"},"Английский язык"), h("div",{class:"note"},"Unit 7 Investment: термины и Conditionals — подготовка к самостоятельной работе"));
   const known=ENGD.t.filter(t=>engKnown(t.i)).length;
+  w.append(h("div",{class:"section-head"},h("h2",{class:"eyebrow"},"Глоссарий и тест · открыто всегда")), engGlPromo());
   w.append(h("div",{class:"section-head"},h("h2",{class:"eyebrow"},"Маршрут к самостоятельной")));
   const cb=courseBlock("eng"); if(cb) w.append(cb);
   w.append(h("div",{class:"section-head"},h("h2",{class:"eyebrow"},`Vocabulary · знаю ${known} из ${ENGD.t.length}`)));
@@ -7152,6 +7155,52 @@ function viewEng(){ const w=h("div",{class:"wrap"}), P=engP(), due=engDue();
     h("div",{class:"grow",style:"flex:1;min-width:0"}, h("div",{class:"t"},"Grammar: Conditionals"), h("div",{class:"s"}, `Шпаргалка и упражнения · освоено ${mastery(["eng-c1","eng-c2","eng-c3"].flatMap(t=>qsOfTopic(t).map(q=>q.id)))}%`)), h("span",{class:"chev"},"›")));
   w.append(h("div",{class:"section-head"},h("h2",{class:"eyebrow"},"Проверка")), mockPromo("eng"));
   const ev=calUpcoming().filter(e=>e.disc==="eng")[0]; if(ev) w.append(h("div",{style:"margin-top:12px"},calCard(ev)));
+  return w; }
+/* ---------- глоссарий и тест по терминам (всегда открыты) ---------- */
+function engGlList(){ return ENGD.t.slice().sort((a,b)=>a.en.replace(/^[^A-Za-z0-9]+/,"").toLowerCase().localeCompare(b.en.replace(/^[^A-Za-z0-9]+/,"").toLowerCase(),"en")); }
+function engGlPromo(){ return h("div",{class:"stack"},
+  h("button",{class:"accpromo",id:"eng-gl",onclick:()=>go({name:"enggl"})}, h("span",{style:"font-size:28px;line-height:1"},"📖"),
+    h("div",{class:"grow",style:"flex:1;min-width:0"}, h("div",{class:"t"},"Глоссарий A–Z"), h("div",{class:"s"},`Все ${ENGD.t.length} терминов курса по алфавиту, с поиском`)), h("span",{class:"chev"},"›")),
+  h("button",{class:"accpromo",id:"eng-tt",style:"margin-top:10px",onclick:()=>engTtStart(20)}, h("span",{style:"font-size:28px;line-height:1"},"🎯"),
+    h("div",{class:"grow",style:"flex:1;min-width:0"}, h("div",{class:"t"},"Тест по терминам"), h("div",{class:"s"},`Термин → определение и определение → термин${engP().tt!=null? " · лучший результат "+engP().tt+"%" : ""}`)), h("span",{class:"chev"},"›"))); }
+function viewEngGl(){ const w=h("div",{class:"wrap"}), all=engGlList();
+  w.append(h("header",{class:"top"}, backBtn({name:"disc",id:"eng"}), h("div",{class:"eyebrow"},"Глоссарий")));
+  w.append(h("h1",{style:"font:700 22px/1.25 var(--f-display)"},"Глоссарий Unit 7 Investment"), h("div",{class:"note"},`${all.length} терминов по алфавиту. Поиск — по-английски или по-русски.`));
+  const inp=h("input",{type:"search",placeholder:"Поиск термина…",style:"width:100%;margin:12px 0;padding:10px 12px;border-radius:10px;border:1px solid var(--line,#ccc);font:inherit;background:transparent;color:inherit"});
+  const l=h("div",{class:"list"});
+  const draw=()=>{ const q=inp.value.trim().toLowerCase(); l.innerHTML=""; let L="";
+    all.filter(t=>!q||(t.en+" "+t.d+" "+t.ru).toLowerCase().includes(q)).forEach(t=>{
+      const c=(t.en.replace(/^[^A-Za-z0-9]+/,"")[0]||"#").toUpperCase(); if(c!==L&&!q){ L=c; l.append(h("div",{class:"eyebrow",style:"margin:12px 0 4px"},c)); }
+      l.append(h("div",{class:"item"}, h("div",{class:"grow"}, h("div",{class:"t"},t.en), h("div",{class:"s"},t.d), h("div",{class:"s",style:"color:var(--muted)"},t.ru)), engSayBtn(t.say))); });
+    if(!l.children.length) l.append(h("div",{class:"note"},"Ничего не найдено.")); };
+  inp.oninput=draw; draw();
+  w.append(h("button",{class:"btn btn-primary btn-block",onclick:()=>engTtStart(20)},"Пройти тест по терминам"), inp, l);
+  return w; }
+function engTtStart(n){ const pool=shuffle(ENGD.t).slice(0,Math.min(n,ENGD.t.length));
+  const items=pool.map((t,k)=>{ const dir=k%2? "d2t" : "t2d"; const others=shuffle(ENGD.t.filter(x=>x.i!==t.i&&x.en!==t.en&&x.d!==t.d)).slice(0,3);
+    const opts=shuffle([t,...others]); return {t,dir,opts,ans:opts.indexOf(t),pick:null}; });
+  S.engtt={items,i:0,ok:0,done:false}; go({name:"engtt"}); }
+function viewEngTt(){ const w=h("div",{class:"wrap"}), T=S.engtt;
+  if(!T){ go({name:"disc",id:"eng"}); return w; }
+  w.append(h("header",{class:"top"}, backBtn({name:"disc",id:"eng"}), h("div",{class:"eyebrow"},"Тест по терминам")));
+  if(T.done){ const p=Math.round(T.ok/T.items.length*100), P=engP(); if(P.tt==null||p>P.tt){ P.tt=p; scheduleSave(true); }
+    w.append(h("h1",{style:"font:700 22px/1.25 var(--f-display)"},`${T.ok} из ${T.items.length} · ${p}%`), h("div",{class:"note"}, p>=80? "Хороший результат." : "Посмотрите ошибки ниже и пройдите ещё раз."));
+    const l=h("div",{class:"list",style:"margin-top:12px"}); T.items.filter(x=>x.pick!==x.ans).forEach(x=>l.append(h("div",{class:"item"},h("div",{class:"grow"},h("div",{class:"t"},x.t.en),h("div",{class:"s"},x.t.d),h("div",{class:"s",style:"color:var(--muted)"},x.t.ru)))));
+    if(l.children.length) w.append(h("div",{class:"section-head"},h("h2",{class:"eyebrow"},"Ошибки")), l);
+    w.append(h("div",{class:"stack",style:"margin-top:14px"}, h("button",{class:"btn btn-primary btn-block",onclick:()=>engTtStart(20)},"Ещё 20 вопросов"), h("button",{class:"btn btn-ghost btn-block",onclick:()=>engTtStart(ENGD.t.length)},`Все ${ENGD.t.length} терминов`), h("button",{class:"btn btn-ghost btn-block",onclick:()=>go({name:"enggl"})},"Открыть глоссарий")));
+    return w; }
+  const x=T.items[T.i];
+  w.append(h("div",{class:"note"},`Вопрос ${T.i+1} из ${T.items.length} · верно ${T.ok}`), h("div",{class:"bar",style:"margin:6px 0 14px"},h("i",{style:`width:${Math.round(T.i/T.items.length*100)}%`})));
+  w.append(h("div",{class:"eyebrow"}, x.dir==="t2d"? "Выберите правильное определение" : "Выберите термин по определению"));
+  w.append(h("div",{class:"card",style:"margin:8px 0 12px;font:600 18px/1.35 var(--f-display)"}, x.dir==="t2d"? x.t.en : x.t.d));
+  const st=h("div",{class:"stack"});
+  x.opts.forEach((o,k)=>{ const b=h("button",{class:"btn btn-ghost btn-block",style:"text-align:left;white-space:normal;height:auto;padding:12px"}, x.dir==="t2d"? o.d : o.en);
+    if(x.pick!==null){ b.disabled=true; if(k===x.ans) b.style.cssText+=";border:2px solid #2e9e5b;background:rgba(46,158,91,.12)"; else if(k===x.pick) b.style.cssText+=";border:2px solid #c0392b;background:rgba(192,57,43,.12)"; }
+    b.onclick=()=>{ if(x.pick!==null) return; x.pick=k; if(k===x.ans) T.ok++; render(); };
+    st.append(b); });
+  w.append(st);
+  if(x.pick!==null){ w.append(h("div",{class:"card note",style:"margin-top:12px"}, h("b",{},x.t.en), " — ", x.t.d, h("br"), h("span",{style:"color:var(--muted)"},x.t.ru)));
+    w.append(h("button",{class:"btn btn-primary btn-block",style:"margin-top:12px",onclick:()=>{ T.i++; if(T.i>=T.items.length) T.done=true; render(); window.scrollTo(0,0); }}, T.i+1>=T.items.length? "Результат" : "Дальше")); }
   return w; }
 function viewEngM(v){ const g=v.g, w=h("div",{class:"wrap"}), s=engGStat(g), ts=engGroup(g), dueG=engDue().filter(i=>engT(i).g===g);
   w.append(h("header",{class:"top"}, backBtn({name:"disc",id:"eng"}), h("div",{class:"eyebrow"},`Vocabulary ${g}`)));
